@@ -4,7 +4,7 @@ import { api, ProjectDetailsResponse, Device, Category, useStore } from '../serv
 import { 
   MapPin, Calendar, Building, 
   MessageSquare, History, ShoppingCart, Plus, Send, Loader2, FileText,
-  CheckCircle2, XCircle, Clock, AlertTriangle
+  CheckCircle2, XCircle, Clock
 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -38,15 +38,10 @@ export default function ProjectDetails() {
   const [inquiryForm, setInquiryForm] = useState({ 
     category_id: '', 
     device_id: '', 
-    quantity: 1,
-    query_text: ''
+    quantity: 1 
   });
-  const [confirmPending, setConfirmPending] = useState(false); // New Checkbox State
   const [submittingInquiry, setSubmittingInquiry] = useState(false);
   const [loadingModalData, setLoadingModalData] = useState(false);
-
-  // Inquiry Actions State
-  const [processingInquiryId, setProcessingInquiryId] = useState<string | null>(null);
 
   // Comment Form
   const [commentBody, setCommentBody] = useState('');
@@ -73,44 +68,16 @@ export default function ProjectDetails() {
   const handleAddInquiry = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id || !inquiryForm.device_id) return;
-    if (!confirmPending) return alert('لطفا تایید تغییر وضعیت را تیک بزنید.');
-
     setSubmittingInquiry(true);
-    
-    const res = await api.addInquiry(id, inquiryForm.device_id, inquiryForm.quantity, inquiryForm.query_text);
-    
+    const res = await api.addInquiry(id, inquiryForm.device_id, inquiryForm.quantity);
     setSubmittingInquiry(false);
     if (res.ok) {
       setShowInquiryModal(false);
-      setInquiryForm({ category_id: '', device_id: '', quantity: 1, query_text: '' });
-      setConfirmPending(false);
-      alert('استعلام با موفقیت ثبت شد و وضعیت پروژه به "در انتظار" تغییر یافت.');
+      setInquiryForm({ category_id: '', device_id: '', quantity: 1 });
+      alert('استعلام با موفقیت ثبت شد و برای تایید به مدیر ارسال گردید.');
       loadData();
     } else {
       alert('خطا در ثبت استعلام');
-    }
-  };
-
-  const handleInquiryAction = async (inquiryId: string, action: 'approve' | 'reject') => {
-    if (!confirm(`آیا از ${action === 'approve' ? 'تایید' : 'رد'} این استعلام اطمینان دارید؟`)) return;
-    
-    setProcessingInquiryId(inquiryId);
-    const res = action === 'approve' 
-      ? await api.approveInquiry(inquiryId)
-      : await api.rejectInquiry(inquiryId);
-    
-    setProcessingInquiryId(null);
-    
-    if (res.ok) {
-      // Update local state immediately
-      if (data) {
-          const updatedInquiries = data.inquiries.map(i => 
-              i.id === inquiryId ? { ...i, status: action === 'approve' ? 'approved' : 'rejected' } : i
-          );
-          setData({ ...data, inquiries: updatedInquiries });
-      }
-    } else {
-      alert('خطا در انجام عملیات');
     }
   };
 
@@ -139,8 +106,8 @@ export default function ProjectDetails() {
 
   const openInquiryModal = async () => {
     setShowInquiryModal(true);
-    setConfirmPending(false);
     setLoadingModalData(true);
+    // Load categories and all devices (we will filter client-side for smoother UX)
     const [catRes, devRes] = await Promise.all([
       api.getCategories(),
       api.getDevices()
@@ -151,6 +118,7 @@ export default function ProjectDetails() {
     setLoadingModalData(false);
   };
 
+  // Filter devices based on selected category
   const filteredDevices = devices.filter(d => d.category_id === inquiryForm.category_id);
 
   if (loading || !data) return <div className="p-12 text-center text-gray-500">در حال بارگذاری...</div>;
@@ -279,8 +247,7 @@ export default function ProjectDetails() {
                     <th className="p-3">قیمت واحد (€)</th>
                     <th className="p-3">قیمت کل (€)</th>
                     <th className="p-3">قیمت کل (ریال)</th>
-                    <th className="p-3">تاریخ ثبت</th>
-                    {isAdminOrManager && <th className="p-3 rounded-l-lg text-center">عملیات</th>}
+                    <th className="p-3 rounded-l-lg">تاریخ ثبت</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -290,12 +257,7 @@ export default function ProjectDetails() {
 
                     return (
                       <tr key={inq.id}>
-                        <td className="p-3">
-                          <div className="font-medium">{inq.model_name}</div>
-                          {inq.query_text_snapshot && (
-                            <div className="text-xs text-gray-500 mt-1">{inq.query_text_snapshot}</div>
-                          )}
-                        </td>
+                        <td className="p-3 font-medium">{inq.model_name}</td>
                         <td className="p-3">{inq.quantity}</td>
                         <td className="p-3">
                           <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
@@ -323,39 +285,11 @@ export default function ProjectDetails() {
                         <td className="p-3 text-gray-400 text-xs">
                           {new Date(inq.created_at).toLocaleDateString('fa-IR')}
                         </td>
-                        {isAdminOrManager && (
-                          <td className="p-3">
-                            <div className="flex items-center justify-center gap-2">
-                              {processingInquiryId === inq.id ? (
-                                <Loader2 className="animate-spin text-gray-400" size={18} />
-                              ) : (
-                                <>
-                                  <button 
-                                    onClick={() => handleInquiryAction(inq.id, 'approve')}
-                                    className={`p-1 rounded hover:bg-green-50 text-green-600 ${inq.status === 'approved' ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                    title="تایید"
-                                    disabled={inq.status === 'approved'}
-                                  >
-                                    <CheckCircle2 size={18} />
-                                  </button>
-                                  <button 
-                                    onClick={() => handleInquiryAction(inq.id, 'reject')}
-                                    className={`p-1 rounded hover:bg-red-50 text-red-600 ${inq.status === 'rejected' ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                    title="رد کردن"
-                                    disabled={inq.status === 'rejected'}
-                                  >
-                                    <XCircle size={18} />
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        )}
                       </tr>
                     );
                   })}
                   {inquiries.length === 0 && (
-                    <tr><td colSpan={isAdminOrManager ? 8 : 7} className="p-8 text-center text-gray-400">هنوز استعلامی ثبت نشده است.</td></tr>
+                    <tr><td colSpan={7} className="p-8 text-center text-gray-400">هنوز استعلامی ثبت نشده است.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -483,39 +417,12 @@ export default function ProjectDetails() {
                   />
                 </div>
 
-                {/* Note / Query Text */}
-                <div>
-                  <label className="block text-sm mb-1 font-medium text-gray-700">4. توضیحات / یادداشت (اختیاری)</label>
-                  <textarea 
-                    value={inquiryForm.query_text}
-                    onChange={e => setInquiryForm({...inquiryForm, query_text: e.target.value})}
-                    className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-sky-500 resize-none h-20"
-                    placeholder="توضیحات مربوط به این دستگاه..."
-                  />
-                </div>
-
-                {/* CONFIRMATION CHECKBOX */}
-                <div className="flex items-start gap-2 mt-4 bg-yellow-50 p-3 rounded-lg border border-yellow-100">
-                  <input 
-                    type="checkbox" 
-                    id="confirmPending"
-                    checked={confirmPending}
-                    onChange={e => setConfirmPending(e.target.checked)}
-                    className="mt-1 w-4 h-4 text-sky-600 rounded focus:ring-sky-500 cursor-pointer"
-                  />
-                  <label htmlFor="confirmPending" className="text-sm text-gray-700 leading-relaxed cursor-pointer select-none">
-                    تایید می‌کنم که با ثبت این استعلام، وضعیت پروژه جهت بررسی توسط مدیر به 
-                    <span className="font-bold mx-1 text-yellow-700">"در انتظار (Pending)"</span>
-                    تغییر خواهد کرد.
-                  </label>
-                </div>
-
                 <div className="flex gap-3 mt-6">
                   <button type="button" onClick={() => setShowInquiryModal(false)} className="flex-1 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">انصراف</button>
                   <button 
                     type="submit" 
-                    disabled={submittingInquiry || !confirmPending} 
-                    className="flex-1 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={submittingInquiry} 
+                    className="flex-1 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 flex items-center justify-center gap-2"
                   >
                     {submittingInquiry && <Loader2 size={16} className="animate-spin" />}
                     ثبت استعلام

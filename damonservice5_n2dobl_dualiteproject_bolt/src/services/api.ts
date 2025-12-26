@@ -59,7 +59,7 @@ export interface Project {
   tehran_lng?: number;
   additional_info?: string;
   status: 'pending_approval' | 'approved' | 'rejected' | 'draft';
-  inquiry_status?: string;
+  inquiry_status?: string; // NEW FIELD
   approval_decision_by?: string;
   approval_decision_at?: string;
   approval_note?: string;
@@ -250,9 +250,8 @@ export const api = {
   addComment: (project_id: string, body: string, parent_comment_id?: string) => callProtected('/comments/add', { project_id, body, parent_comment_id }),
 
   // Inquiries
-  addInquiry: (project_id: string, device_id: string, quantity: number, query_text?: string) => callProtected('/inquiries/quote', { project_id, device_id, quantity, query_text }),
+  addInquiry: (project_id: string, device_id: string, quantity: number) => callProtected('/inquiries/quote', { project_id, device_id, quantity }),
   getPendingInquiries: () => callProtected('/admin/inquiries/pending'),
-  getAllInquiries: () => callProtected('/admin/inquiries/list'), // NEW
   approveInquiry: (inquiry_id: string) => callProtected('/admin/inquiries/approve', { inquiry_id }),
   rejectInquiry: (inquiry_id: string) => callProtected('/admin/inquiries/reject', { inquiry_id }),
 
