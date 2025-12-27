@@ -1,19 +1,19 @@
 [build]
-    command = "npm install && npm run build"
-  publish = "dist"
-  base = "/"
-  ignore = "false"  # Never skip build
-  force = "true"    # Force build even if no changes detected
+command = "npx vite build"
+publish = "dist"
+base = "/"
+ignore = "false"
+force = "true"
 
 [build.environment]
-  NODE_VERSION = "18"
-  CI = "true"       # Ensure we're in CI mode
-  NETLIFY_BUILD_SKIP = "false"  # Never skip build
+NODE_VERSION = "18"
+CI = "true"
+NETLIFY_BUILD_SKIP = "false"
 
 [build.processing]
-  skip_processing = false  # Ensure processing is not skipped
+skip_processing = false
 
 [dev]
-  command = "vite"
-  port = 3000
-  publish = "dist"
+command = "vite"
+port = 3000
+publish = "dist"
