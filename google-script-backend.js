@@ -1,9 +1,12 @@
 /**
- * DAMON SERVICE - FINAL ROBUST BACKEND v18.0
- * 
- * FIXES:
- * - Exact column mapping for 'details', 'quantity', 'status', 'inquiry_status'.
- * - Sends data with multiple key variations to match Sheet headers flexibly.
+ * DAMON SERVICE - INQUIRY WORKFLOW ENHANCED v19.0
+ *
+ * NEW FEATURES:
+ * - Enhanced inquiry workflow: PENDING → APPROVED/REJECTED with audit trail
+ * - Price visibility enforcement based on role and inquiry status
+ * - EUR-only pricing (IRR columns preserved but not used)
+ * - Notification system for Super Admin
+ * - Non-breaking column additions (append only)
  */
 
 const SPREADSHEET_ID = '1r18JUVxvbjZtVyx8x2l00p2Na0xWe0CejDHZYK-pgcg';
@@ -59,10 +62,15 @@ function handle_(method, e) {
        }
        
        // Inquiry Management
-       if (path === '/admin/inquiries/list') return inquiriesListAll_(user);
+       if (path === '/admin/inquiries/list') return inquiriesListAll_(user, req.params);
        if (path === '/admin/inquiries/pending') return inquiriesListPending_(user);
        if (path === '/admin/inquiries/approve') return inquiriesApprove_(user, req.body, req);
        if (path === '/admin/inquiries/reject') return inquiriesReject_(user, req.body, req);
+       if (path === '/admin/inquiries/stats') return inquiriesStats_(user);
+
+       // Notifications
+       if (path === '/notifications/list') return notificationsList_(user);
+       if (path === '/notifications/mark_read') return notificationsMarkRead_(user, req.body);
     }
 
     // General (Authenticated)
@@ -320,6 +328,59 @@ function requireRole_(u, roles) { if (!roles.includes(u.role)) throw new Error('
 function isTrue_(v) { return String(v).toLowerCase() === 'true' || v === true; }
 
 /* =======================
+   COLUMN MANAGEMENT (NON-BREAKING)
+======================= */
+function ensureColumns_(sheetName, requiredColumns) {
+  const sheet = sh_(sheetName);
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const normalizedHeaders = headers.map(normalize_);
+
+  const missingColumns = requiredColumns.filter(col =>
+    !normalizedHeaders.includes(normalize_(col))
+  );
+
+  if (missingColumns.length > 0) {
+    const lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      const lastCol = sheet.getLastColumn();
+      missingColumns.forEach((col, idx) => {
+        sheet.getRange(1, lastCol + idx + 1).setValue(col);
+      });
+    } finally {
+      lock.releaseLock();
+    }
+  }
+}
+
+function getSuperAdmin_() {
+  const users = readAll_('users');
+  return users.find(u => u.role === 'admin' || u.username === 'admin');
+}
+
+function createNotification_(type, targetUserId, projectId, inquiryId, message) {
+  try {
+    ensureColumns_('notifications', [
+      'id', 'type', 'targetUserId', 'relatedProjectId',
+      'relatedInquiryId', 'message', 'isRead', 'createdAt'
+    ]);
+
+    appendCanon_('notifications', {
+      id: Utilities.getUuid(),
+      type: type,
+      targetUserId: targetUserId,
+      relatedProjectId: projectId || '',
+      relatedInquiryId: inquiryId || '',
+      message: message,
+      isRead: false,
+      createdAt: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error('Failed to create notification:', e);
+  }
+}
+
+/* =======================
    BUSINESS LOGIC
 ======================= */
 function adminUserCreate_(actor, body, req) {
@@ -455,15 +516,31 @@ function projectsDetail_(user, params) {
   const inquiries = readAll_('project_inquiries').filter(x => String(x.project_id) === String(pid));
   const prices = readAll_('inquiry_prices_snapshot');
   const devices = readAll_('devices');
-  
+
+  const isAdmin = user.role === 'admin' || user.role === 'sales_manager';
+
   const inqMapped = inquiries.map(i => {
     const pr = prices.find(x => String(x.project_inquiry_id) === String(i.id)) || {};
     const dev = devices.find(d => String(d.id) === String(i.device_id)) || {};
-    return { 
-      ...i, 
-      sell_price_eur_snapshot: pr.sell_price_eur_snapshot, 
-      sell_price_irr_snapshot: pr.sell_price_irr_snapshot,
-      model_name: dev.model_name 
+
+    const status = String(i.status || '').toLowerCase();
+    const isCreator = String(i.requested_by_user_id) === String(user.id);
+
+    let showPrice = false;
+    if (isAdmin) {
+      showPrice = true;
+    } else if (status === 'approved' && isCreator) {
+      showPrice = true;
+    }
+
+    const unitPrice = i.unitPriceEUR || pr.sell_price_eur_snapshot;
+    const totalPrice = i.totalPriceEUR || (unitPrice * (i.quantity || 1));
+
+    return {
+      ...i,
+      sell_price_eur_snapshot: showPrice ? unitPrice : null,
+      sell_price_irr_snapshot: null,
+      model_name: dev.model_name
     };
   });
   
@@ -542,14 +619,13 @@ function commentsAdd_(user, body, req) {
 function inquiriesQuote_(user, body, req) {
   const dev = readAll_('devices').find(d => String(d.id) === String(body.device_id));
   const s = getActiveSettings_();
-  
-  // CRITICAL: Ensure quantity is a number and at least 1
+
   let quantity = Number(body.quantity);
   if (isNaN(quantity) || quantity < 1) quantity = 1;
-  
-  const queryText = body.query_text || ''; 
-  
-  // --- PRICING FORMULA v4 (Final) ---
+
+  const queryText = body.query_text || body.title || dev.model_name;
+  const description = body.description || '';
+
   const P = Number(dev.factory_pricelist_eur || 0);
   const L = Number(dev.length_meter || 0);
   const W = Number(dev.weight_unit || 0);
@@ -570,61 +646,79 @@ function inquiriesQuote_(user, body, req) {
   const subtotal = companyPrice + shipment + custom + warranty;
   const afterCommission = subtotal / (COM || 1);
   const afterOffice = afterCommission / (OFF || 1);
-  let sellPrice = afterOffice / (PF || 1);
-  
+  let unitPriceEUR = afterOffice / (PF || 1);
+
   const step = Number(s.rounding_step || 0);
   if (step > 0) {
     const mode = String(s.rounding_mode || 'none');
-    if (mode === 'round') sellPrice = Math.round(sellPrice / step) * step;
-    if (mode === 'ceil') sellPrice = Math.ceil(sellPrice / step) * step;
-    if (mode === 'floor') sellPrice = Math.floor(sellPrice / step) * step;
+    if (mode === 'round') unitPriceEUR = Math.round(unitPriceEUR / step) * step;
+    if (mode === 'ceil') unitPriceEUR = Math.ceil(unitPriceEUR / step) * step;
+    if (mode === 'floor') unitPriceEUR = Math.floor(unitPriceEUR / step) * step;
   }
-  
-  const exchangeRate = Number(s.exchange_rate_irr_per_eur || 0);
-  const sellPriceIRR = sellPrice * exchangeRate;
+
+  const totalPriceEUR = unitPriceEUR * quantity;
 
   const iid = Utilities.getUuid();
   const now = new Date().toISOString();
-  
-  // 1. ADD INQUIRY - EXACT COLUMN MAPPING
-  const inquiryRecord = { 
-    id: iid, 
-    project_id: body.project_id, 
-    requested_by_user_id: user.id, 
-    device_id: body.device_id, 
-    category_id: dev.category_id, 
-    quantity: quantity, 
-    
-    // Send BOTH keys to ensure it matches whatever header is in the sheet ('details' or 'query_text_snapshot')
+
+  ensureColumns_('project_inquiries', [
+    'id', 'project_id', 'requested_by_user_id', 'device_id', 'category_id',
+    'quantity', 'title', 'description', 'unitPriceEUR', 'totalPriceEUR', 'currency',
+    'status', 'inquiry_status', 'reviewedByUserId', 'reviewedAt', 'rejectionReason',
+    'details', 'query_text_snapshot', 'settings_id_snapshot', 'created_at'
+  ]);
+
+  const inquiryRecord = {
+    id: iid,
+    project_id: body.project_id,
+    requested_by_user_id: user.id,
+    device_id: body.device_id,
+    category_id: dev.category_id,
+    quantity: quantity,
+    title: queryText,
+    description: description,
+    unitPriceEUR: unitPriceEUR,
+    totalPriceEUR: totalPriceEUR,
+    currency: 'EUR',
+    status: 'pending',
+    inquiry_status: 'pending',
+    reviewedByUserId: '',
+    reviewedAt: '',
+    rejectionReason: '',
     details: queryText,
     query_text_snapshot: queryText,
-    
     settings_id_snapshot: s.id || '',
-    created_at: now,
-    status: 'pending',          
-    inquiry_status: 'pending'   
+    created_at: now
   };
 
   appendCanon_('project_inquiries', inquiryRecord);
-  
-  // 2. UPDATE PROJECT SHEET status to alert admin
+
   try {
      updateById_('projects', body.project_id, { inquiry_status: 'pending' });
-  } catch(e) {
-     console.error("Could not update project inquiry_status", e);
-  }
-  
-  // 3. SNAPSHOT PRICES
-  appendCanon_('inquiry_prices_snapshot', { 
-    id: Utilities.getUuid(), 
-    project_inquiry_id: iid, 
-    sell_price_eur_snapshot: sellPrice, 
-    sell_price_irr_snapshot: sellPriceIRR,
-    created_at: now 
+  } catch(e) {}
+
+  appendCanon_('inquiry_prices_snapshot', {
+    id: Utilities.getUuid(),
+    project_inquiry_id: iid,
+    sell_price_eur_snapshot: unitPriceEUR,
+    sell_price_irr_snapshot: 0,
+    created_at: now
   });
-  
-  logAudit_(user, 'ADD_INQUIRY', { project_id: body.project_id, device: dev.model_name, price_eur: sellPrice, quantity: quantity }, req);
-  return ok_({ inquiry_id: iid, sell_price_eur: sellPrice, sell_price_irr: sellPriceIRR });
+
+  const superAdmin = getSuperAdmin_();
+  if (superAdmin) {
+    const project = readAll_('projects').find(p => String(p.id) === String(body.project_id));
+    createNotification_(
+      'INQUIRY_CREATED',
+      superAdmin.id,
+      body.project_id,
+      iid,
+      'استعلام جدید در پروژه "' + (project ? project.project_name : 'نامشخص') + '" ثبت شد'
+    );
+  }
+
+  logAudit_(user, 'ADD_INQUIRY', { project_id: body.project_id, device: dev.model_name, price_eur: unitPriceEUR, quantity: quantity }, req);
+  return ok_({ inquiry_id: iid, sell_price_eur: unitPriceEUR, total_price_eur: totalPriceEUR });
 }
 
 function devicesSearch_(user, params) {
@@ -643,20 +737,30 @@ function inquiriesListPending_(user) {
     const s = String(i.status || '').toLowerCase();
     return s !== 'approved' && s !== 'rejected';
   });
-  return ok_(mapInquiries_(inquiries));
+  return ok_(mapInquiries_(inquiries, user));
 }
 
-function inquiriesListAll_(user) {
-  const inquiries = readAll_('project_inquiries');
-  // Sort by created_at desc
-  return ok_(mapInquiries_(inquiries).reverse());
+function inquiriesListAll_(user, params) {
+  let inquiries = readAll_('project_inquiries');
+
+  const statusFilter = params ? params.status_filter : '';
+  if (statusFilter) {
+    inquiries = inquiries.filter(i => {
+      const s = String(i.status || '').toLowerCase();
+      return s === statusFilter.toLowerCase();
+    });
+  }
+
+  return ok_(mapInquiries_(inquiries, user).reverse());
 }
 
-function mapInquiries_(inquiries) {
+function mapInquiries_(inquiries, user) {
   const projects = readAll_('projects');
   const users = readAll_('users');
   const devices = readAll_('devices');
   const prices = readAll_('inquiry_prices_snapshot');
+
+  const isAdmin = user && (user.role === 'admin' || user.role === 'sales_manager');
 
   return inquiries.map(inq => {
     const p = projects.find(x => String(x.id) === String(inq.project_id)) || {};
@@ -664,13 +768,28 @@ function mapInquiries_(inquiries) {
     const d = devices.find(x => String(x.id) === String(inq.device_id)) || {};
     const pr = prices.find(x => String(x.project_inquiry_id) === String(inq.id)) || {};
 
+    const status = String(inq.status || '').toLowerCase();
+    const isCreator = user && String(inq.requested_by_user_id) === String(user.id);
+
+    let showPrice = false;
+    if (isAdmin) {
+      showPrice = true;
+    } else if (status === 'approved' && isCreator) {
+      showPrice = true;
+    }
+
+    const unitPrice = inq.unitPriceEUR || pr.sell_price_eur_snapshot;
+    const totalPrice = inq.totalPriceEUR || (unitPrice * (inq.quantity || 1));
+
     return {
       ...inq,
       project_name: p.project_name || 'Unknown Project',
       employer_name: p.employer_name || '',
       requested_by_name: u.full_name || 'Unknown User',
       model_name: d.model_name || 'Unknown Device',
-      sell_price_eur_snapshot: pr.sell_price_eur_snapshot
+      sell_price_eur_snapshot: showPrice ? unitPrice : null,
+      unitPriceEUR: showPrice ? unitPrice : null,
+      totalPriceEUR: showPrice ? totalPrice : null
     };
   });
 }
@@ -709,17 +828,86 @@ function updateInquiryStatus_(inquiryId, newStatus) {
 }
 
 function inquiriesApprove_(user, body, req) {
+  const now = new Date().toISOString();
   const success = updateInquiryStatus_(body.inquiry_id, 'approved');
   if (!success) return err_('NOT_FOUND', 'Inquiry ID not found or update failed', 404);
-  
+
+  updateById_('project_inquiries', body.inquiry_id, {
+    reviewedByUserId: user.id,
+    reviewedAt: now
+  });
+
+  const inquiry = readAll_('project_inquiries').find(i => String(i.id) === String(body.inquiry_id));
+  if (inquiry) {
+    const project = readAll_('projects').find(p => String(p.id) === String(inquiry.project_id));
+    createNotification_(
+      'INQUIRY_STATUS_CHANGED',
+      inquiry.requested_by_user_id,
+      inquiry.project_id,
+      body.inquiry_id,
+      'استعلام شما در پروژه "' + (project ? project.project_name : 'نامشخص') + '" تایید شد'
+    );
+  }
+
   logAudit_(user, 'APPROVE_INQUIRY', { inquiry_id: body.inquiry_id }, req);
   return ok_({ approved: true });
 }
 
 function inquiriesReject_(user, body, req) {
+  const now = new Date().toISOString();
+  const reason = body.reason || body.rejection_reason || 'بدون دلیل';
+
   const success = updateInquiryStatus_(body.inquiry_id, 'rejected');
   if (!success) return err_('NOT_FOUND', 'Inquiry ID not found or update failed', 404);
-  
-  logAudit_(user, 'REJECT_INQUIRY', { inquiry_id: body.inquiry_id }, req);
+
+  updateById_('project_inquiries', body.inquiry_id, {
+    reviewedByUserId: user.id,
+    reviewedAt: now,
+    rejectionReason: reason
+  });
+
+  const inquiry = readAll_('project_inquiries').find(i => String(i.id) === String(body.inquiry_id));
+  if (inquiry) {
+    const project = readAll_('projects').find(p => String(p.id) === String(inquiry.project_id));
+    createNotification_(
+      'INQUIRY_STATUS_CHANGED',
+      inquiry.requested_by_user_id,
+      inquiry.project_id,
+      body.inquiry_id,
+      'استعلام شما در پروژه "' + (project ? project.project_name : 'نامشخص') + '" رد شد. دلیل: ' + reason
+    );
+  }
+
+  logAudit_(user, 'REJECT_INQUIRY', { inquiry_id: body.inquiry_id, reason: reason }, req);
   return ok_({ rejected: true });
+}
+
+function inquiriesStats_(user) {
+  const inquiries = readAll_('project_inquiries');
+  const pending = inquiries.filter(i => String(i.status || '').toLowerCase() === 'pending').length;
+  const approved = inquiries.filter(i => String(i.status || '').toLowerCase() === 'approved').length;
+  const rejected = inquiries.filter(i => String(i.status || '').toLowerCase() === 'rejected').length;
+
+  return ok_({ total: inquiries.length, pending, approved, rejected });
+}
+
+function notificationsList_(user) {
+  try {
+    const notifications = readAll_('notifications')
+      .filter(n => String(n.targetUserId) === String(user.id))
+      .reverse()
+      .slice(0, 50);
+    return ok_(notifications);
+  } catch (e) {
+    return ok_([]);
+  }
+}
+
+function notificationsMarkRead_(user, body) {
+  try {
+    updateById_('notifications', body.id, { isRead: true });
+    return ok_({ updated: true });
+  } catch (e) {
+    return err_('ERROR', 'Failed to mark as read', 500);
+  }
 }

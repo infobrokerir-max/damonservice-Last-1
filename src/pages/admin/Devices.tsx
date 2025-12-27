@@ -87,50 +87,56 @@ export default function AdminDevices() {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <table className="w-full text-right">
-          <thead className="bg-gray-50 text-gray-500 text-sm">
-            <tr>
-              <th className="p-4 font-medium">مدل دستگاه</th>
-              <th className="p-4 font-medium">دسته‌بندی</th>
-              <th className="p-4 font-medium">قیمت پایه (€)</th>
-              <th className="p-4 font-medium">طول (m)</th>
-              <th className="p-4 font-medium">وزن (kg)</th>
-              <th className="p-4 font-medium text-center">عملیات</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {loading ? (
-              <tr><td colSpan={6} className="p-8 text-center text-gray-400">در حال بارگذاری...</td></tr>
-            ) : filtered.map((dev) => (
-              <tr key={dev.id} className="hover:bg-gray-50 transition-colors">
-                <td className="p-4 font-medium text-gray-800 flex items-center gap-2">
-                  <Cpu size={16} className="text-gray-400" />
-                  {dev.model_name}
-                </td>
-                <td className="p-4 text-gray-600 text-sm">
-                  {categories.find(c => String(c.id) === String(dev.category_id))?.category_name || '-'}
-                </td>
-                <td className="p-4 font-mono text-sm">
-                  {dev.factory_pricelist_eur ? `€ ${dev.factory_pricelist_eur.toLocaleString()}` : '-'}
-                </td>
-                <td className="p-4 font-mono text-sm text-gray-600">{dev.length_meter || 0}</td>
-                <td className="p-4 font-mono text-sm text-gray-600">{dev.weight_unit || 0}</td>
-                <td className="p-4 flex gap-2 justify-center">
-                  <button 
-                    onClick={() => handleCalcClick(dev)} 
-                    className="text-sky-500 hover:text-sky-700 p-1"
-                    title="محاسبه قیمت"
-                  >
-                    <Calculator size={18} />
-                  </button>
-                  <button onClick={() => handleDelete(dev.id)} className="text-red-400 hover:text-red-600 p-1">
-                    <Trash2 size={18} />
-                  </button>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-right min-w-max">
+            <thead className="bg-gray-50 text-gray-500 text-sm">
+              <tr>
+                <th className="p-4 font-medium whitespace-nowrap">مدل دستگاه</th>
+                <th className="p-4 font-medium whitespace-nowrap">دسته‌بندی</th>
+                <th className="p-4 font-medium whitespace-nowrap">قیمت پایه (€)</th>
+                <th className="p-4 font-medium whitespace-nowrap">طول (m)</th>
+                <th className="p-4 font-medium whitespace-nowrap">وزن (kg)</th>
+                <th className="p-4 font-medium text-center whitespace-nowrap">عملیات</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {loading ? (
+                <tr><td colSpan={6} className="p-8 text-center text-gray-400">در حال بارگذاری...</td></tr>
+              ) : filtered.map((dev) => (
+                <tr key={dev.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="p-4 font-medium text-gray-800">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Cpu size={16} className="text-gray-400 shrink-0" />
+                      <span className="overflow-wrap-anywhere break-words">{dev.model_name}</span>
+                    </div>
+                  </td>
+                  <td className="p-4 text-gray-600 text-sm whitespace-nowrap">
+                    {categories.find(c => String(c.id) === String(dev.category_id))?.category_name || '-'}
+                  </td>
+                  <td className="p-4 font-mono text-sm whitespace-nowrap">
+                    {dev.factory_pricelist_eur ? `€${dev.factory_pricelist_eur.toLocaleString()}` : '-'}
+                  </td>
+                  <td className="p-4 font-mono text-sm text-gray-600 whitespace-nowrap">{dev.length_meter || 0}</td>
+                  <td className="p-4 font-mono text-sm text-gray-600 whitespace-nowrap">{dev.weight_unit || 0}</td>
+                  <td className="p-4">
+                    <div className="flex gap-2 justify-center">
+                      <button
+                        onClick={() => handleCalcClick(dev)}
+                        className="text-sky-500 hover:text-sky-700 p-1"
+                        title="محاسبه قیمت"
+                      >
+                        <Calculator size={18} />
+                      </button>
+                      <button onClick={() => handleDelete(dev.id)} className="text-red-400 hover:text-red-600 p-1">
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* CREATE MODAL */}

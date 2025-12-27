@@ -237,65 +237,63 @@ export default function ProjectDetails() {
               </button>
             </div>
             
-            <div className="overflow-x-auto">
-              <table className="w-full text-right text-sm">
-                <thead className="bg-gray-50 text-gray-500">
-                  <tr>
-                    <th className="p-3 rounded-r-lg">مدل دستگاه</th>
-                    <th className="p-3">تعداد</th>
-                    <th className="p-3">وضعیت</th>
-                    <th className="p-3">قیمت واحد (€)</th>
-                    <th className="p-3">قیمت کل (€)</th>
-                    <th className="p-3">قیمت کل (ریال)</th>
-                    <th className="p-3 rounded-l-lg">تاریخ ثبت</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {inquiries.map(inq => {
-                    const isApproved = inq.status === 'approved';
-                    const showPrice = isApproved || isAdminOrManager;
-
-                    return (
-                      <tr key={inq.id}>
-                        <td className="p-3 font-medium">{inq.model_name}</td>
-                        <td className="p-3">{inq.quantity}</td>
-                        <td className="p-3">
-                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-                            inq.status === 'approved' ? 'bg-green-100 text-green-700' :
-                            inq.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                            'bg-yellow-100 text-yellow-700'
-                          }`}>
-                             {inq.status === 'approved' ? <CheckCircle2 size={12}/> : 
-                              inq.status === 'rejected' ? <XCircle size={12}/> : <Clock size={12}/>}
-                             {inq.status === 'approved' ? 'تایید شده' : 
-                              inq.status === 'rejected' ? 'رد شده' : 'در انتظار'}
-                          </span>
-                        </td>
-                        <td className="p-3 font-mono text-gray-600">
-                          {showPrice ? `${inq.sell_price_eur_snapshot?.toLocaleString()} €` : '---'}
-                        </td>
-                        <td className="p-3 font-mono font-bold text-sky-700">
-                          {showPrice ? `${((inq.sell_price_eur_snapshot || 0) * inq.quantity).toLocaleString()} €` : '---'}
-                        </td>
-                        <td className="p-3 font-mono text-gray-600">
-                          {showPrice ? (inq.sell_price_irr_snapshot 
-                            ? ((inq.sell_price_irr_snapshot || 0) * inq.quantity).toLocaleString() 
-                            : '-') : '---'}
-                        </td>
-                        <td className="p-3 text-gray-400 text-xs">
-                          {new Date(inq.created_at).toLocaleDateString('fa-IR')}
-                        </td>
+            <div className="overflow-x-auto -mx-6 px-6">
+              <div className="min-w-full inline-block align-middle">
+                <div className="overflow-hidden">
+                  <table className="min-w-full text-right text-sm">
+                    <thead className="bg-gray-50 text-gray-500">
+                      <tr>
+                        <th className="p-3 rounded-r-lg whitespace-nowrap">مدل دستگاه</th>
+                        <th className="p-3 whitespace-nowrap">تعداد</th>
+                        <th className="p-3 whitespace-nowrap">وضعیت</th>
+                        <th className="p-3 whitespace-nowrap">قیمت واحد (€)</th>
+                        <th className="p-3 rounded-l-lg whitespace-nowrap">قیمت کل (€)</th>
                       </tr>
-                    );
-                  })}
-                  {inquiries.length === 0 && (
-                    <tr><td colSpan={7} className="p-8 text-center text-gray-400">هنوز استعلامی ثبت نشده است.</td></tr>
-                  )}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {inquiries.map(inq => {
+                        const unitPrice = inq.sell_price_eur_snapshot;
+                        const showPrice = unitPrice !== null && unitPrice !== undefined;
+
+                        return (
+                          <tr key={inq.id} className="hover:bg-gray-50">
+                            <td className="p-3 font-medium min-w-0">
+                              <div className="overflow-wrap-anywhere break-words max-w-xs">
+                                {inq.model_name}
+                              </div>
+                            </td>
+                            <td className="p-3 whitespace-nowrap">{inq.quantity}</td>
+                            <td className="p-3">
+                              <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
+                                inq.status === 'approved' ? 'bg-green-100 text-green-700' :
+                                inq.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                                'bg-yellow-100 text-yellow-700'
+                              }`}>
+                                 {inq.status === 'approved' ? <CheckCircle2 size={12}/> :
+                                  inq.status === 'rejected' ? <XCircle size={12}/> : <Clock size={12}/>}
+                                 {inq.status === 'approved' ? 'تایید' :
+                                  inq.status === 'rejected' ? 'رد' : 'انتظار'}
+                              </span>
+                            </td>
+                            <td className="p-3 font-mono text-gray-600 whitespace-nowrap">
+                              {showPrice ? `€${unitPrice.toLocaleString()}` : '---'}
+                            </td>
+                            <td className="p-3 font-mono font-bold text-sky-700 whitespace-nowrap">
+                              {showPrice ? `€${(unitPrice * inq.quantity).toLocaleString()}` : '---'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {inquiries.length === 0 && (
+                        <tr><td colSpan={5} className="p-8 text-center text-gray-400">هنوز استعلامی ثبت نشده است.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
             {!isAdminOrManager && (
-              <p className="text-xs text-gray-400 mt-4">* قیمت‌ها پس از تایید مدیر قابل مشاهده خواهند بود.</p>
+              <p className="text-xs text-gray-400 mt-4">* قیمت‌ها فقط برای استعلام‌های تایید شده و توسط ایجادکننده قابل مشاهده است.</p>
             )}
           </div>
         )}

@@ -83,31 +83,36 @@ export default function AdminCategories() {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <table className="w-full text-right">
-          <thead className="bg-gray-50 text-gray-500 text-sm">
-            <tr>
-              <th className="p-4 font-medium">نام دسته‌بندی</th>
-              <th className="p-4 font-medium">توضیحات</th>
-              <th className="p-4 font-medium">وضعیت</th>
-              <th className="p-4 font-medium">عملیات</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {loading ? (
-              <tr><td colSpan={4} className="p-8 text-center text-gray-400">در حال بارگذاری...</td></tr>
-            ) : categories.map((cat) => {
-              const isActive = String(cat.is_active) === 'true' || cat.is_active === true;
-              return (
-                <tr key={cat.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="p-4 font-medium text-gray-800 flex items-center gap-2">
-                    <div className="w-8 h-8 bg-purple-50 text-purple-600 rounded-lg flex items-center justify-center shrink-0">
-                      <Tag size={16} />
-                    </div>
-                    {cat.category_name}
-                  </td>
-                  <td className="p-4 text-gray-500 text-sm max-w-xs truncate">
-                    {cat.description || '-'}
-                  </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-right min-w-max">
+            <thead className="bg-gray-50 text-gray-500 text-sm">
+              <tr>
+                <th className="p-4 font-medium whitespace-nowrap">نام دسته‌بندی</th>
+                <th className="p-4 font-medium whitespace-nowrap">توضیحات</th>
+                <th className="p-4 font-medium whitespace-nowrap">وضعیت</th>
+                <th className="p-4 font-medium whitespace-nowrap">عملیات</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {loading ? (
+                <tr><td colSpan={4} className="p-8 text-center text-gray-400">در حال بارگذاری...</td></tr>
+              ) : categories.map((cat) => {
+                const isActive = String(cat.is_active) === 'true' || cat.is_active === true;
+                return (
+                  <tr key={cat.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="p-4 font-medium text-gray-800">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-8 h-8 bg-purple-50 text-purple-600 rounded-lg flex items-center justify-center shrink-0">
+                          <Tag size={16} />
+                        </div>
+                        <span className="overflow-wrap-anywhere break-words">{cat.category_name}</span>
+                      </div>
+                    </td>
+                    <td className="p-4 text-gray-500 text-sm">
+                      <div className="max-w-xs overflow-wrap-anywhere break-words">
+                        {cat.description || '-'}
+                      </div>
+                    </td>
                   <td className="p-4">
                     <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${
                       isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
@@ -116,19 +121,22 @@ export default function AdminCategories() {
                       {isActive ? 'فعال' : 'غیرفعال'}
                     </span>
                   </td>
-                  <td className="p-4 flex gap-2">
-                    <button onClick={() => handleOpenModal(cat)} className="text-blue-400 hover:text-blue-600 p-1">
-                      <Edit2 size={18} />
-                    </button>
-                    <button onClick={() => handleDelete(cat.id)} className="text-red-400 hover:text-red-600 p-1">
-                      <Trash2 size={18} />
-                    </button>
+                  <td className="p-4">
+                    <div className="flex gap-2">
+                      <button onClick={() => handleOpenModal(cat)} className="text-blue-400 hover:text-blue-600 p-1">
+                        <Edit2 size={18} />
+                      </button>
+                      <button onClick={() => handleDelete(cat.id)} className="text-red-400 hover:text-red-600 p-1">
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
             })}
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
 
       {showModal && (

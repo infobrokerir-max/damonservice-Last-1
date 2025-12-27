@@ -56,15 +56,16 @@ export default function AdminUsers() {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <table className="w-full text-right">
-          <thead className="bg-gray-50 text-gray-500 text-sm">
-            <tr>
-              <th className="p-4 font-medium">نام کامل</th>
-              <th className="p-4 font-medium">نام کاربری</th>
-              <th className="p-4 font-medium">نقش</th>
-              <th className="p-4 font-medium">عملیات</th>
-            </tr>
-          </thead>
+        <div className="overflow-x-auto">
+          <table className="w-full text-right min-w-max">
+            <thead className="bg-gray-50 text-gray-500 text-sm">
+              <tr>
+                <th className="p-4 font-medium whitespace-nowrap">نام کامل</th>
+                <th className="p-4 font-medium whitespace-nowrap">نام کاربری</th>
+                <th className="p-4 font-medium whitespace-nowrap">نقش</th>
+                <th className="p-4 font-medium whitespace-nowrap">عملیات</th>
+              </tr>
+            </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
               <tr><td colSpan={4} className="p-8 text-center text-gray-400">در حال بارگذاری...</td></tr>
@@ -92,7 +93,8 @@ export default function AdminUsers() {
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
 
       {showModal && (

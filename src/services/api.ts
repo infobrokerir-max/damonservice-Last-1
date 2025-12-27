@@ -96,13 +96,20 @@ export interface ProjectInquiry {
   category_id: string;
   quantity: number;
   status: 'pending' | 'approved' | 'rejected';
+  title?: string;
+  description?: string;
+  unitPriceEUR?: number | null;
+  totalPriceEUR?: number | null;
+  currency?: string;
+  reviewedByUserId?: string;
+  reviewedAt?: string;
+  rejectionReason?: string;
   query_text_snapshot?: string;
   settings_id_snapshot?: string;
   created_at: string;
   model_name?: string;
-  sell_price_eur_snapshot?: number;
-  sell_price_irr_snapshot?: number;
-  // For Admin List
+  sell_price_eur_snapshot?: number | null;
+  sell_price_irr_snapshot?: number | null;
   project_name?: string;
   employer_name?: string;
   requested_by_name?: string;
@@ -127,6 +134,24 @@ export interface AuditLog {
   user_agent?: string;
   created_at: string;
   actor_name?: string;
+}
+
+export interface Notification {
+  id: string;
+  type: string;
+  targetUserId: string;
+  relatedProjectId?: string;
+  relatedInquiryId?: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface InquiryStats {
+  total: number;
+  pending: number;
+  approved: number;
+  rejected: number;
 }
 
 export interface ProjectDetailsResponse {
@@ -252,8 +277,14 @@ export const api = {
   // Inquiries
   addInquiry: (project_id: string, device_id: string, quantity: number) => callProtected('/inquiries/quote', { project_id, device_id, quantity }),
   getPendingInquiries: () => callProtected('/admin/inquiries/pending'),
+  getAllInquiries: (status_filter?: string) => callProtected('/admin/inquiries/list', { status_filter }),
+  getInquiryStats: () => callProtected('/admin/inquiries/stats'),
   approveInquiry: (inquiry_id: string) => callProtected('/admin/inquiries/approve', { inquiry_id }),
-  rejectInquiry: (inquiry_id: string) => callProtected('/admin/inquiries/reject', { inquiry_id }),
+  rejectInquiry: (inquiry_id: string, reason: string) => callProtected('/admin/inquiries/reject', { inquiry_id, reason }),
+
+  // Notifications
+  getNotifications: () => callProtected('/notifications/list'),
+  markNotificationRead: (id: string) => callProtected('/notifications/mark_read', { id }),
 
   // Audit
   getAuditLogs: () => callProtected('/admin/audit/list'),
